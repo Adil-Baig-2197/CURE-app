@@ -2,56 +2,44 @@
 
 ## Current status
 
-Initial setup, schema migration, patient profile/history, report verification, screening snapshots, questionnaire persistence, emergency flags, and core role workflows are implemented. User verified Docker startup, patient registration, protected-token access, profile updates, report upload/listing/verification, and prior automated tests. ML remains intentionally unavailable pending approved data.
+CURE is a React/FastAPI/PostgreSQL prototype with authentication and role-based access, patient profiles/history, protected report upload and verification, adaptive screening questionnaire and history, emergency flags, triage and assigned-doctor workflows, account administration, analytics, and audit events. The requested backlog implementation and exploratory ML training have been completed to the prototype/research scope listed in `BACKLOG.md`.
 
-The workspace (`D:\Dev\Backend\CURE-app`) was empty and is now an initialized Git repository. There was no existing implementation to preserve.
+Verification on 2026-10-23: backend suite **18 passed** (one Starlette deprecation warning); frontend production TypeScript/Vite build passes after the latest frontend fix; Compose images rebuilt and services started; PostgreSQL reported healthy, `/api/v1/health` returned `ok`, and the frontend returned HTTP 200. Browser check confirmed the clean login page and readable invalid-email/incorrect-password feedback. Full authenticated role-to-role browser verification has not been performed.
 
-## Current task
+`DEMO_GUIDE.md` now gives the quick local setup and patient → triage → doctor → admin walkthrough. API validation errors are formatted as readable messages instead of `[object Object]`.
 
-`P5-02` — complete screening workflow verification, then test doctor/triage/admin authorization boundaries.
+For the user-requested demo deliverables, `RUN_GUIDE.md` documents Windows PowerShell setup, run, account bootstrap, role walkthrough, upload, test, build, optional model training, and shutdown commands. The synthetic upload files are `output/pdf/cure_synthetic_demo_lab_report.pdf`, `demo-assets/images/cure_synthetic_demo_lab_report.png`, and `demo-assets/images/cure_synthetic_demo_visit_note.jpg`. The PDF and both image formats were visually reviewed; the backend extraction function returned non-empty text for each. All values are fictional and carry prominent non-clinical-use labels.
 
-## Exact next steps
+## ML status and limits
 
-1. Run the expanded API tests for questionnaire persistence, snapshot immutability, emergency precedence, RBAC denial, deletion confirmation, and report-validation failure.
-2. Create a development administrator, then manually verify triage routing and doctor review.
-3. Select data only after authorized access and documented label review.
+The reproducible pipeline inspected CDC 2022 NHAMCS ED data, trained logistic regression and random forest baselines, and saved research artifacts locally under ignored `ml/artifacts/`. Validation weighted macro-F1 selected logistic regression provisionally (0.3154 vs 0.2259). On the held-out test set, logistic regression weighted macro-F1 was 0.3576; random forest scored 0.2325. Rare urgency classes had poor recall, including only 4/21 immediate cases and 5/46 nonurgent cases recalled by the selected baseline. These results are not clinically adequate and the models are not connected to CURE or patient decisions.
 
-## Intended architecture and data flow
+No claim of clinical validity, safety, calibration, fairness, or generalization is supported. Do not integrate or deploy the model without independent clinical validation and additional data and evaluation. See `docs/DATASET_DISCOVERY.md`.
 
-- React frontend communicates with a FastAPI modular monolith using REST APIs.
-- FastAPI owns authentication/RBAC, patient data, reports, questionnaires, screenings, triage, feedback, analytics, and audit logging.
-- PostgreSQL stores normalized relational data; protected local storage retains uploaded reports.
-- Local PDF text extraction/OCR feeds unverified report data; patient verification creates separate confirmed structured data.
-- A versioned scikit-learn pipeline will evaluate urgency only after a real, documented dataset is selected. Emergency-warning rules will remain independent of ML inference.
+## Remaining external work
 
-## Important files
+1. A qualified clinician must review and approve the emergency rules and urgent guidance in `docs/EMERGENCY_RULES.md` before any real patient use.
+2. Clinical validation and external testing are needed before any predictive model could be considered for integration. The backlog marks model integration as blocked on that validation.
+3. Privacy documentation notes that account deletion does not yet have a durable cleanup worker; operator monitoring and a retention review are needed before production use.
+4. Full role-by-role browser workflow tests, production deployment hardening, and real-world operational/compliance review are outside this verified prototype pass.
 
-- `compose.yaml` — React, FastAPI, and PostgreSQL development services.
-- `backend/app/main.py` — FastAPI application and `/api/v1/health` endpoint.
-- `backend/app/db/models.py` — normalized ORM foundation for accounts, profiles/history, reports, assignments, screenings, reviews, model versions, and audit events.
-- `backend/app/api/auth.py` — patient-only registration, login, JWT current-user dependency, and reusable role guard.
-- `backend/alembic/versions/20261023_01_initial_schema.py` — explicit initial PostgreSQL schema migration.
-- `frontend/src/main.tsx` — minimal React entrypoint and safety statement.
-- `BACKLOG.md` — canonical task status and acceptance criteria.
-- `DECISIONS.md` — technical and clinical-safety decisions.
-- `HANDOFF.md` — this resumable status record.
+## Architecture and important files
 
-## Dataset and model status
-
-No dataset has been selected, imported, or trained. `docs/DATASET_DISCOVERY.md` records MIMIC-IV-ED as the preferred but access-restricted research candidate and CDC NHAMCS as a public candidate requiring inspection. No urgency-label mapping, model, metric, explanation, or clinical performance result exists yet.
+- `backend/app/api/questionnaire.py`, `backend/app/services/emergency.py` — questionnaire and independent safety flags.
+- `backend/app/api/screenings.py` — screening creation, snapshots, patient history/detail.
+- `backend/app/api/workflow.py` — triage, doctor review, assignment access, admin functions.
+- `backend/app/api/patients.py` — patient data and privacy deletion behavior.
+- `frontend/src/main.tsx`, `frontend/src/RoleDashboard.tsx` — patient and staff interfaces.
+- `ml/train_nhamcs.py`, `ml/requirements.txt`, `ml/Dockerfile` — reproducible research training pipeline.
+- `docs/DATASET_DISCOVERY.md`, `docs/EMERGENCY_RULES.md`, `docs/PRIVACY_AND_RETENTION.md` — evidence and limitations.
+- `BACKLOG.md`, `DECISIONS.md` — canonical task status and decisions.
 
 ## Commands
 
-Verified: `python -m py_compile backend/app/main.py backend/app/api/health.py backend/app/core/config.py backend/app/api/auth.py backend/app/core/security.py backend/app/db/base.py backend/app/db/models.py backend/app/db/session.py backend/alembic/env.py backend/alembic/versions/20261023_01_initial_schema.py` and `docker compose --env-file .env.example config --quiet` both exited successfully on 2026-10-23. The user verified services start locally, migration application, and patient registration with HTTP 201. The coding session itself cannot access the Windows Docker API pipe.
+Start development services: `docker compose up --build` (set local secrets as described in `README.md`).
 
-To start the app, copy `.env.example` to `.env`, choose local development-only secrets, then run `docker compose up --build`. Runtime/image-build verification has not yet been performed.
+Backend regression suite: `docker compose --env-file .env.example --profile test run --build --rm backend-test`.
 
-## Known blockers and risks
+Train/evaluate research baselines: see `README.md` and `ml/README.md`; CDC data and generated artifacts are local and ignored by Git.
 
-- Automated login/authorization tests and authentication audit events remain to be implemented. The coding session itself cannot access the Windows Docker API pipe.
-- Dataset selection requires an evidence-based public-data review before any ML implementation or performance claim.
-- Emergency rules require reputable clinical guidance and appropriate clinical review; none are defined yet.
-
-## Next task for another agent
-
-Execute `P1-03` from `BACKLOG.md`, update all three tracking files with actual commands/results, and do not mark it complete until the configured services start or any blockers are documented.
+Do not use experimental ML outputs or unreviewed emergency rules for patient care.

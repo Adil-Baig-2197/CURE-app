@@ -5,9 +5,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONPATH=/app
 
 WORKDIR /app
-RUN apt-get update \
-    && apt-get install --no-install-recommends -y poppler-utils tesseract-ocr \
-    && rm -rf /var/lib/apt/lists/*
+# API tests do not require OCR executables. The runtime backend image still installs
+# Poppler and Tesseract for local PDF and image extraction.
 COPY requirements.txt requirements-dev.txt ./
 RUN pip install --no-cache-dir -r requirements-dev.txt
 COPY app ./app

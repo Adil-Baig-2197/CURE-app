@@ -18,6 +18,8 @@ dist/
 # Runtime data and uploads
 storage/
 postgres_data/
+/data/nhamcs/
+/ml/artifacts/
 
 # Tooling and editor files
 .coverage

@@ -1,4 +1,8 @@
 from datetime import date
+import logging
+import os
+from pathlib import Path
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -11,6 +15,7 @@ from app.db.models import AuditEvent, MedicalHistory, MedicalReport, PatientProf
 from app.db.session import get_db
 
 router = APIRouter(prefix="/patients", tags=["patients"])
+logger = logging.getLogger(__name__)
 
 
 class ProfileResponse(BaseModel):
@@ -116,11 +121,32 @@ def delete_my_eligible_data(
     if db.scalar(select(Screening.id).where(Screening.patient_id == profile.id).limit(1)):
         raise HTTPException(status_code=409, detail="Deletion is not yet eligible because historical screening records require retention review")
     reports = db.scalars(select(MedicalReport).where(MedicalReport.patient_id == profile.id)).all()
-    storage_root = get_settings().report_storage_path
-    for report in reports:
-        path = storage_root / report.storage_key
-        if path.is_file(): path.unlink()
-    db.add(AuditEvent(actor_id=user.id, action="patient.delete.request.completed", resource_type="user", resource_id=str(user.id)))
-    db.flush()
-    db.delete(user)
-    db.commit()
+    storage_root = get_settings().report_storage_path.resolve()
+    quarantine = storage_root / ".deletion-pending"
+    staged_files: list[tuple[Path, Path]] = []
+    try:
+        for report in reports:
+            path = (storage_root / report.storage_key).resolve()
+            if storage_root not in path.parents:
+                raise HTTPException(status_code=500, detail="Stored report path failed safety validation")
+            if path.is_file():
+                quarantine.mkdir(parents=True, exist_ok=True)
+                staged = quarantine / f"{uuid4().hex}.pending"
+                os.replace(path, staged)
+                staged_files.append((path, staged))
+        db.add(AuditEvent(actor_id=user.id, action="patient.delete.request.completed", resource_type="user", resource_id=str(user.id)))
+        db.flush()
+        db.delete(user)
+        db.commit()
+    except Exception:
+        db.rollback()
+        for original, staged in reversed(staged_files):
+            original.parent.mkdir(parents=True, exist_ok=True)
+            if staged.exists():
+                os.replace(staged, original)
+        raise
+    for _, staged in staged_files:
+        try:
+            staged.unlink(missing_ok=True)
+        except OSError:
+            logger.exception("Could not remove quarantined report after account deletion")
