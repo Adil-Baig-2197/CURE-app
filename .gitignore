@@ -1,0 +1,27 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Node / React
+node_modules/
+dist/
+.vite/
+
+# Runtime data and uploads
+storage/
+postgres_data/
+
+# Tooling and editor files
+.coverage
+coverage/
+.idea/
+.vscode/
+*.log
